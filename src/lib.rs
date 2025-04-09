@@ -152,6 +152,9 @@ pub struct Programmer {
 }
 
 impl Programmer {
+    /// Read all contents from the device.
+    ///
+    /// Not recommended to use.
     pub fn read_all(&mut self) -> Result<Vec<u8>> {
         let mut buf = Vec::new();
         let result = self.port.read_to_end(&mut buf);
@@ -345,5 +348,13 @@ impl Programmer {
             data,
         })?;
         Ok(())
+    }
+
+    pub fn inner(&self) -> &Box<dyn SerialPort> {
+        &self.port
+    }
+
+    pub fn into_inner(self) -> Box<dyn SerialPort> {
+        self.port
     }
 }
