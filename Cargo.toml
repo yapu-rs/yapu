@@ -2,6 +2,12 @@
 name = "yapu"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+repository = "https://github.com/yapu-rs/yapu"
+description = "AN3155-compliant programmer"
+readme = "README.md"
+categories = ["embedded", "command-line-utilities", "hardware-support"]
+keywords = ["embedded", "uart", "serial", "bootloader", "flash", "programmer"]
 
 [dependencies]
 anyhow = { version = "1.0", optional = true }

@@ -1,3 +1,14 @@
+//! # YAPU: Yet Another Programmer via USART
+//!
+//! AN3155-compliant programmer
+//!
+//! [GitHub][repo]
+//!
+//! The library implements the protocols used by AN3155-compliant bootloaders
+//! and offers device discovery.
+//!
+//! [repo]: https://github.com/yapu-rs/yapu
+
 mod probe;
 mod protocol;
 
