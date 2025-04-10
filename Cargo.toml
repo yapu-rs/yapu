@@ -17,3 +17,7 @@ binary = ["dep:clap", "dep:anyhow"]
 [[bin]]
 name = "yapu"
 required-features = ["binary"]
+
+[[example]]
+name = "discover"
+required-features = ["binary"]
