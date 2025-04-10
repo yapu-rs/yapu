@@ -56,6 +56,9 @@ impl Default for SignalScheme {
 }
 
 impl SignalScheme {
+    pub fn builder() -> SignalSchemeBuilder {
+        Default::default()
+    }
     pub fn reset(&self) -> Option<Signal> {
         self.reset
     }
@@ -93,6 +96,12 @@ impl SignalSchemeBuilder {
     }
 }
 
+impl From<SignalScheme> for SignalSchemeBuilder {
+    fn from(value: SignalScheme) -> Self {
+        Self { inner: value }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Probe {
     baudrate: u32,
@@ -115,6 +124,9 @@ impl Default for Probe {
 }
 
 impl Probe {
+    pub fn builder() -> ProbeBuilder {
+        Default::default()
+    }
     pub fn baudrate(&self) -> u32 {
         self.baudrate
     }
@@ -182,5 +194,11 @@ impl ProbeBuilder {
     pub fn reset_for(&mut self, duration: Duration) -> &mut Self {
         self.inner.reset_for = duration;
         self
+    }
+}
+
+impl From<Probe> for ProbeBuilder {
+    fn from(value: Probe) -> Self {
+        Self { inner: value }
     }
 }
