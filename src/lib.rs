@@ -288,10 +288,10 @@ impl Programmer {
 
     fn identify(&mut self) -> Result<()> {
         let mut retries = 0;
-        self.port.clear(ClearBuffer::All)?;
         self.set_boot(true)?;
         while retries < self.probe.max_attempts() {
             self.reset()?;
+            self.port.clear(ClearBuffer::All)?;
             match self.send_reliable(Command::Synchronize) {
                 Ok(_) => {
                     self.set_boot(false)?;
