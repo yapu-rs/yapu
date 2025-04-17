@@ -164,20 +164,6 @@ macro_rules! define_slice_item {
         #[derive(BinWrite, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
         $vis struct $name;
 
-        // impl $name {
-        //     pub fn $as_method(&self) -> $inner_ty {
-        //         self.0
-        //     }
-        // }
-
-        // impl From<$inner_ty> for $name {
-        //     fn from(value: $inner_ty) -> Self { Self(value) }
-        // }
-
-        // impl Into<$inner_ty> for $name {
-        //     fn into(self: $name) -> $inner_ty { self.0 }
-        // }
-
         impl SliceItem for $name {
             type Repr = $inner_ty;
             type Size = $size_ty;
