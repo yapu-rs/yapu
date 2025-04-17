@@ -2,19 +2,33 @@
 //!
 //! AN3155-compliant programmer
 //!
-//! [GitHub][repo]
+//! [![license][license badge]][repo]
+//! [![crates.io version][crates.io version badge]][crate]
 //!
 //! The library implements the protocols used by AN3155-compliant bootloaders
-//! and offers device discovery.
+//! and offers device discovery. Check [repo README][repo] for more details.
+//!
+//! A binary `yapu` is also shipped in the [crate][crate] for common use.
 //!
 //! [repo]: https://github.com/yapu-rs/yapu
+//! [crate]: https://crates.io/crates/yapu
+//!
+//! [license badge]: https://img.shields.io/github/license/yapu-rs/yapu?style=flat
+//! [crates.io version badge]: https://img.shields.io/crates/v/yapu?style=flat
 
 mod probe;
 mod protocol;
 
 pub use probe::{Probe, ProbeBuilder, Signal, SignalScheme, SignalSchemeBuilder};
-use protocol::{Bootloader, Data, Id, Version};
-use protocol::{Command, Opcode, Reply};
+
+// Common requests and responses in the protocol
+pub use protocol::{Command, Opcode, Reply, Address};
+pub use protocol::{Erase, ExtendedErase};
+pub use protocol::{Bootloader, Id, Version};
+
+// Slice and slice items defined in the protocol
+pub use protocol::{Slice, SliceItem};
+pub use protocol::{Byte, Data, PageNo, PageNos, ExtendedPageNo, ExtendedPageNos, SectorNo, SectorNos};
 
 use binrw::io::NoSeek;
 use binrw::meta::{ReadEndian, WriteEndian};
@@ -23,13 +37,11 @@ use log::trace;
 use serialport::ClearBuffer;
 use serialport::SerialPort;
 use serialport::{DataBits, FlowControl, Parity, StopBits};
-use std::borrow::Cow;
 
 /// Error
 #[derive(Debug)]
 pub enum Error {
     NAck,
-    Busy,
     Unidentified,
     ProtocolConversion(protocol::Error),
     Io(std::io::Error),
@@ -40,9 +52,6 @@ pub enum Error {
 impl Error {
     pub fn is_nack(&self) -> bool {
         matches!(self, Self::NAck)
-    }
-    pub fn is_busy(&self) -> bool {
-        matches!(self, Self::Busy)
     }
     pub fn is_unidentified(&self) -> bool {
         matches!(self, Self::Unidentified)
@@ -116,8 +125,7 @@ impl Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NAck => write!(f, "nack error"),
-            Self::Busy => write!(f, "target is busy"),
+            Self::NAck => write!(f, "negative ack"),
             Self::Unidentified => write!(f, "cannot identify device"),
             Self::ProtocolConversion(e) => write!(f, "protocol conversion error: {}", e),
             Self::Io(e) => write!(f, "io error: {}", e),
@@ -155,7 +163,7 @@ impl std::error::Error for Error {}
 
 type Result<T> = std::result::Result<T, Error>;
 
-/// Programmer
+/// AN3155-compliant programmer
 #[derive(Debug)]
 pub struct Programmer {
     port: Box<dyn SerialPort>,
@@ -163,7 +171,7 @@ pub struct Programmer {
 }
 
 impl Programmer {
-    /// Read all contents from the device.
+    /// Reads all contents from the device.
     ///
     /// Not recommended to use.
     pub fn read_all(&mut self) -> Result<Vec<u8>> {
@@ -176,8 +184,9 @@ impl Programmer {
         }
     }
 
-    pub fn port<'a>(path: impl Into<Cow<'a, str>>, probe: &Probe) -> Result<Box<dyn SerialPort>> {
-        let port = serialport::new(path, probe.baudrate())
+    /// Opens a serial port by its name and configures it according to a probe.
+    pub fn port(path: impl AsRef<str>, probe: &Probe) -> Result<Box<dyn SerialPort>> {
+        let port = serialport::new(path.as_ref(), probe.baudrate())
             .data_bits(DataBits::Eight)
             .parity(Parity::Even)
             .stop_bits(StopBits::One)
@@ -187,7 +196,7 @@ impl Programmer {
         Ok(port)
     }
 
-    /// Create a programmer from an existing serial port without handshaking
+    /// Creates a programmer from an existing serial port without handshaking.
     pub fn attach(port: Box<dyn SerialPort>, probe: &Probe) -> Self {
         Self {
             port,
@@ -195,8 +204,9 @@ impl Programmer {
         }
     }
 
-    pub fn open<'a>(path: impl Into<Cow<'a, str>>, probe: &Probe) -> Result<Self> {
-        let port = Self::port(path, probe)?;
+    /// Creates a programmer from a port name.
+    pub fn open(path: impl AsRef<str>, probe: &Probe) -> Result<Self> {
+        let port = Self::port(path.as_ref(), probe)?;
         let mut programmer = Self {
             port,
             probe: probe.clone(),
@@ -205,9 +215,7 @@ impl Programmer {
         Ok(programmer)
     }
 
-    /// Send data
-    ///
-    /// This sends data to the port.
+    /// Sends serializable [`BinWrite`] data to the underlying port.
     pub fn send<T: for<'b> BinWrite<Args<'b> = ()> + WriteEndian>(
         &mut self,
         data: T,
@@ -217,9 +225,9 @@ impl Programmer {
         Ok(())
     }
 
-    /// Send data through reliable channels
+    /// Sends serializable [`BinWrite`] data through reliable channels.
     ///
-    /// This sends data to the port and expects a reply from the controller.
+    /// Unlike [`Self::send`], the sender expects a reply from the controller.
     pub fn send_reliable<T: for<'b> BinWrite<Args<'b> = ()> + WriteEndian>(
         &mut self,
         data: T,
@@ -230,17 +238,18 @@ impl Programmer {
         trace!("received reliable reply: {:?}", reply);
         match reply {
             Reply::NAck => Err(Error::NAck),
-            Reply::Busy => Err(Error::Busy),
             Reply::Ack => Ok(()),
         }
     }
 
+    /// Receives serializable [`BinRead`] data from the underlying port.
     pub fn recv<T: for<'b> BinRead<Args<'b> = ()> + ReadEndian>(&mut self) -> Result<T> {
         let mut wrapper = NoSeek::new(&mut self.port);
         let data = T::read(&mut wrapper)?;
         Ok(data)
     }
 
+    /// Receives serializable [`BinRead`] data through reliable channels.
     pub fn recv_reliable<T: for<'b> BinRead<Args<'b> = ()> + ReadEndian>(&mut self) -> Result<T> {
         let mut wrapper = NoSeek::new(&mut self.port);
         let data = T::read(&mut wrapper)?;
@@ -248,6 +257,7 @@ impl Programmer {
         Ok(data)
     }
 
+    /// Sends a [`Command`] defined in the protocol.
     pub fn send_command(&mut self, command: Command) -> Result<()> {
         match command {
             Command::Read { address, size } => {
@@ -260,10 +270,19 @@ impl Programmer {
                 self.send_reliable(address)?;
                 self.send_reliable(data)
             }
+            Command::Erase(erase) => {
+                self.send_reliable(Opcode::ERASE)?;
+                self.send_reliable(erase)
+            }
+            Command::ExtendedErase(erase) => {
+                self.send_reliable(Opcode::EXTENDED_ERASE)?;
+                self.send_reliable(erase)
+            }
             other => self.send_reliable(other),
         }
     }
 
+    /// Changes a signal value of the underlying port.
     pub fn set_signal(&mut self, signal: Signal, active: bool) -> Result<()> {
         let raw = signal.raw_level(active);
         match signal {
@@ -273,6 +292,7 @@ impl Programmer {
         Ok(())
     }
 
+    /// Changes boot signal value of the underlying port.
     pub fn set_boot(&mut self, active: bool) -> Result<()> {
         if let Some(signal) = self.probe.signal_boot() {
             self.set_signal(signal, active)?;
@@ -280,6 +300,7 @@ impl Programmer {
         Ok(())
     }
 
+    /// Changes reset signal value of the underlying port.
     pub fn set_reset(&mut self, active: bool) -> Result<()> {
         if let Some(signal) = self.probe.signal_reset() {
             self.set_signal(signal, active)?;
@@ -287,7 +308,8 @@ impl Programmer {
         Ok(())
     }
 
-    fn reset(&mut self) -> Result<()> {
+    /// Resets the device.
+    pub fn reset(&mut self) -> Result<()> {
         if self.probe.signal_reset().is_some() {
             self.set_reset(false)?;
             self.set_reset(true)?;
@@ -316,6 +338,7 @@ impl Programmer {
         Err(Error::Unidentified)
     }
 
+    /// Discovers compliant devices using a probe.
     pub fn discover(probe: &Probe) -> Result<Vec<Self>> {
         let ports = serialport::available_ports()?
             .into_iter()
@@ -324,36 +347,40 @@ impl Programmer {
         Ok(ports)
     }
 
+    /// Reads bootloader information.
     pub fn read_bootloader(&mut self) -> Result<Bootloader> {
         self.send_command(Command::Get())?;
         let bootloader: Bootloader = self.recv_reliable()?;
         Ok(bootloader)
     }
 
+    /// Reads version.
     pub fn read_version(&mut self) -> Result<Version> {
         self.send_command(Command::Version())?;
         let version: Version = self.recv_reliable()?;
         Ok(version)
     }
 
+    /// Reads chip ID.
     pub fn read_id(&mut self) -> Result<Id> {
         self.send_command(Command::Id())?;
         let id: Id = self.recv_reliable()?;
         Ok(id)
     }
 
-    pub fn read_memory(&mut self, address: u32, size: usize) -> Result<Vec<u8>> {
+    /// Reads memory at specific region.
+    pub fn read_memory(&mut self, address: u32, size: usize) -> Result<Data> {
         self.send_command(Command::Read {
             address: address.into(),
             size: size.try_into()?,
         })?;
         let mut data = vec![0u8; size];
         self.port.read_exact(&mut data)?;
-        Ok(data)
+        Ok(data.try_into().unwrap())
     }
 
-    pub fn write_memory<'a>(&mut self, address: u32, data: &'a [u8]) -> Result<()> {
-        let data = Data { data };
+    /// Writes memory at specific region.
+    pub fn write_memory<'a>(&mut self, address: u32, data: Data) -> Result<()> {
         self.send_reliable(Command::Write {
             address: address.into(),
             data,
@@ -361,10 +388,12 @@ impl Programmer {
         Ok(())
     }
 
+    /// Gets the underlying serial port.
     pub fn inner(&self) -> &Box<dyn SerialPort> {
         &self.port
     }
 
+    /// Gets the underlying serial port and drops the programmer.
     pub fn into_inner(self) -> Box<dyn SerialPort> {
         self.port
     }
