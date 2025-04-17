@@ -19,10 +19,11 @@
 mod probe;
 mod protocol;
 
+pub use probe::{Baudrate, Identify};
 pub use probe::{Probe, ProbeBuilder, Signal, SignalScheme, SignalSchemeBuilder};
 
 // Common requests and responses in the protocol
-pub use protocol::{Command, Opcode, Reply, Address};
+pub use protocol::{Command, Opcode, Reply, Address, Size};
 pub use protocol::{Erase, ExtendedErase};
 pub use protocol::{Bootloader, Id, Version};
 
@@ -43,7 +44,7 @@ use serialport::{DataBits, FlowControl, Parity, StopBits};
 pub enum Error {
     NAck,
     Unidentified,
-    ProtocolConversion(protocol::Error),
+    Protocol(protocol::Error),
     Io(std::io::Error),
     Serial(serialport::Error),
     Frame(binrw::Error),
@@ -58,17 +59,17 @@ impl Error {
     }
 
     pub fn is_protocol_conversion(&self) -> bool {
-        matches!(self, Self::ProtocolConversion(..))
+        matches!(self, Self::Protocol(..))
     }
     pub fn as_protocol_conversion(&self) -> Option<&protocol::Error> {
         match self {
-            Self::ProtocolConversion(e) => Some(e),
+            Self::Protocol(e) => Some(e),
             _ => None,
         }
     }
     pub fn into_protocol_conversion(self) -> Option<protocol::Error> {
         match self {
-            Self::ProtocolConversion(e) => Some(e),
+            Self::Protocol(e) => Some(e),
             _ => None,
         }
     }
@@ -127,7 +128,7 @@ impl std::fmt::Display for Error {
         match self {
             Self::NAck => write!(f, "negative ack"),
             Self::Unidentified => write!(f, "cannot identify device"),
-            Self::ProtocolConversion(e) => write!(f, "protocol conversion error: {}", e),
+            Self::Protocol(e) => write!(f, "protocol conversion error: {}", e),
             Self::Io(e) => write!(f, "io error: {}", e),
             Self::Serial(e) => write!(f, "serial error: {}", e),
             Self::Frame(e) => write!(f, "frame error: {}", e),
@@ -137,7 +138,7 @@ impl std::fmt::Display for Error {
 
 impl From<protocol::Error> for Error {
     fn from(value: protocol::Error) -> Self {
-        Self::ProtocolConversion(value)
+        Self::Protocol(value)
     }
 }
 
@@ -204,14 +205,17 @@ impl Programmer {
         }
     }
 
-    /// Creates a programmer from a port name.
+    /// Creates a programmer from a port name and tries to identify.
     pub fn open(path: impl AsRef<str>, probe: &Probe) -> Result<Self> {
         let port = Self::port(path.as_ref(), probe)?;
         let mut programmer = Self {
             port,
             probe: probe.clone(),
         };
-        programmer.identify()?;
+        match probe.identify() {
+            Identify::Handshake => { programmer.identify()?; },
+            Identify::Get => { programmer.send_command(Command::Get())?; },
+        }
         Ok(programmer)
     }
 
@@ -253,7 +257,7 @@ impl Programmer {
     pub fn recv_reliable<T: for<'b> BinRead<Args<'b> = ()> + ReadEndian>(&mut self) -> Result<T> {
         let mut wrapper = NoSeek::new(&mut self.port);
         let data = T::read(&mut wrapper)?;
-        self.send(())?;
+        self.send_reliable(())?;
         Ok(data)
     }
 
@@ -369,18 +373,18 @@ impl Programmer {
     }
 
     /// Reads memory at specific region.
-    pub fn read_memory(&mut self, address: u32, size: usize) -> Result<Data> {
+    pub fn read_memory(&mut self, address: impl Into<Address>, size: Size) -> Result<Data> {
         self.send_command(Command::Read {
             address: address.into(),
-            size: size.try_into()?,
+            size,
         })?;
-        let mut data = vec![0u8; size];
+        let mut data = vec![0u8; size.into()];
         self.port.read_exact(&mut data)?;
         Ok(data.try_into().unwrap())
     }
 
     /// Writes memory at specific region.
-    pub fn write_memory<'a>(&mut self, address: u32, data: Data) -> Result<()> {
+    pub fn write_memory<'a, D>(&mut self, address: impl Into<Address>, data: Data) -> Result<()> {
         self.send_reliable(Command::Write {
             address: address.into(),
             data,

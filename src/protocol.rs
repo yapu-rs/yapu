@@ -187,11 +187,7 @@ define_slice_item! { pub Sector(SectorNo), as_u8, u8, 1..=256 }
 pub struct Size(u8, #[bw(calc = checksum::single(self.0))] u8);
 
 impl Into<usize> for Size {
-    fn into(self) -> usize { self.0 as usize }
-}
-
-impl Into<u8> for Size {
-    fn into(self) -> u8 { self.0 }
+    fn into(self) -> usize { self.0 as usize + <Byte as SliceItem>::SIZE_RANGE.start() }
 }
 
 impl TryFrom<usize> for Size {

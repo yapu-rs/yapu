@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+pub type Baudrate = u32;
+
 /// MODEM control signals as GPIOs
 ///
 /// The enum variants are part of standard MODEM control signals.
@@ -16,6 +18,16 @@ pub enum Signal {
 }
 
 impl Signal {
+    /// Creates a [`Signal`] for RTS.
+    pub fn rts(active_when: bool) -> Self {
+        Self::Rts { active_when }
+    }
+
+    /// Creates a [`Signal`] for DTR.
+    pub fn dtr(active_when: bool) -> Self {
+        Self::Dtr { active_when }
+    }
+
     /// Gets the bool value when the signal is active.
     pub fn active_when(&self) -> bool {
         match self {
@@ -68,6 +80,11 @@ impl Default for SignalScheme {
 }
 
 impl SignalScheme {
+    /// Creates a default [`SignalScheme`].
+    pub fn new() -> Self {
+        Default::default()
+    }
+
     /// Creates a default [`SignalScheme`] builder.
     pub fn builder() -> SignalSchemeBuilder {
         Default::default()
@@ -137,14 +154,31 @@ impl From<SignalScheme> for SignalSchemeBuilder {
     }
 }
 
+/// Decides how to identify a device
+///
+/// Sometimes a device is already in bootloader mode, thus the initial handshake
+/// is not necessary. However, we still have to distinguish a device from other
+/// ports, probably by using some command: at the moment, only [`Command::Get`]
+/// is supported.
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Identify {
+    /// Identify a device by sending [`Command::Synchronize`].
+    #[default]
+    Handshake,
+
+    /// Identify a device by sending [`Command::Get`].
+    Get,
+}
+
 /// Probe contains necessary parameters for probing an AN3155-compliant device.
 #[derive(Debug, Clone)]
 pub struct Probe {
-    baudrate: u32,
+    baudrate: Baudrate,
     signal_scheme: SignalScheme,
     reset_for: Duration,
     max_attempts: usize,
     timeout: Duration,
+    identify: Identify,
 }
 
 impl Default for Probe {
@@ -155,18 +189,24 @@ impl Default for Probe {
             reset_for: Duration::from_millis(10),
             max_attempts: 8,
             timeout: Duration::from_millis(100),
+            identify: Identify::default(),
         }
     }
 }
 
 impl Probe {
+    /// Creates a default [`Probe`].
+    pub fn new() -> Self {
+        Default::default()
+    }
+
     /// Creates a default [`Probe`] builder.
     pub fn builder() -> ProbeBuilder {
         Default::default()
     }
 
     /// Gets baudrate of the probe.
-    pub fn baudrate(&self) -> u32 {
+    pub fn baudrate(&self) -> Baudrate {
         self.baudrate
     }
 
@@ -199,6 +239,11 @@ impl Probe {
     pub fn timeout(&self) -> Duration {
         self.timeout
     }
+
+    /// Gets identification scheme.
+    pub fn identify(&self) -> Identify {
+        self.identify
+    }
 }
 
 /// [`Probe`] builder
@@ -225,7 +270,7 @@ impl ProbeBuilder {
     }
 
     /// Sets baudrate of the probe.
-    pub fn baudrate(&mut self, baudrate: u32) -> &mut Self {
+    pub fn baudrate(&mut self, baudrate: Baudrate) -> &mut Self {
         self.inner.baudrate = baudrate;
         self
     }
@@ -248,9 +293,27 @@ impl ProbeBuilder {
         self
     }
 
+    /// Disables reset signal of the probe.
+    pub fn disable_reset(&mut self) -> &mut Self {
+        self.inner.signal_scheme.set_reset(None);
+        self
+    }
+
+    /// Disables boot signal of the probe.
+    pub fn disable_boot(&mut self) -> &mut Self {
+        self.inner.signal_scheme.set_boot(None);
+        self
+    }
+
     /// Sets the duration of time for keeping the reset signal active.
     pub fn reset_for(&mut self, duration: Duration) -> &mut Self {
         self.inner.reset_for = duration;
+        self
+    }
+
+    /// Sets identification scheme.
+    pub fn identify(&mut self, identify: Identify) -> &mut Self {
+        self.inner.identify = identify;
         self
     }
 }
