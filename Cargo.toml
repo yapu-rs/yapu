@@ -33,3 +33,7 @@ required-features = ["binary"]
 [[example]]
 name = "discover"
 required-features = ["binary"]
+
+[package.metadata.docs.rs]
+features = ["serde"]
+rustdoc-args = ["--cfg", "docsrs"]

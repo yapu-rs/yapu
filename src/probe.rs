@@ -1,4 +1,5 @@
 use std::time::Duration;
+use crate::Command;
 
 pub type Baudrate = u32;
 
