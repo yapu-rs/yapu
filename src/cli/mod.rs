@@ -1,13 +1,22 @@
-mod shell;
 mod output;
+mod shell;
 
-use std::str::FromStr;
-pub use shell::Shell;
 use anyhow::anyhow;
-use yapu::{Baudrate, Identify, Probe, Programmer, Signal, SignalScheme};
-pub use clap::{Args, Parser, Subcommand, ValueEnum};
+#[allow(unused_imports)]
+use log::{debug, error, info, trace, warn};
 
-#[derive(Parser)]
+use yapu::{Baudrate, Identify, Probe, Programmer, Signal, SignalScheme};
+
+pub use clap::{Args, Parser, Subcommand, ValueEnum};
+pub use shell::Shell;
+use std::fmt::Display;
+use std::str::FromStr;
+
+use serde::Serialize;
+use tabled::settings::{Width, peaker::Priority};
+use tabled::{Table, Tabled};
+
+#[derive(Parser, Debug, Clone)]
 #[clap(about, author, version, arg_required_else_help = true)]
 pub struct Cli {
     #[clap(subcommand)]
@@ -17,7 +26,7 @@ pub struct Cli {
     format: Format,
 }
 
-#[derive(Args)]
+#[derive(Args, Debug, Clone)]
 pub struct DeviceOptions {
     /// Specify the device port
     ///
@@ -26,7 +35,7 @@ pub struct DeviceOptions {
     device: Option<String>,
 }
 
-#[derive(Args)]
+#[derive(Args, Debug, Clone)]
 pub struct ProbeOptions {
     /// Specify the baudrate for probing and programming
     #[clap(short, long, default_value_t = 115_200)]
@@ -46,7 +55,7 @@ pub struct ProbeOptions {
     boot: DeviceSignal,
 
     /// Identify a device by
-    #[clap(short, long, default_value = "handshake")]
+    #[clap(short, long)]
     identify: DeviceIdentify,
 }
 
@@ -64,7 +73,7 @@ impl ProbeOptions {
     }
 }
 
-#[derive(ValueEnum, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(ValueEnum, Default, Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum Format {
     /// Normal output
     #[default]
@@ -82,16 +91,20 @@ impl Format {
         matches!(self, Self::Text)
     }
 
+    #[allow(dead_code)]
+    #[inline]
     pub fn is_table(&self) -> bool {
         matches!(self, Self::Table)
     }
 
+    #[allow(dead_code)]
+    #[inline]
     pub fn is_json(&self) -> bool {
         matches!(self, Self::Json)
     }
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum Command {
     /// Discover compliant devices
     Discover(DiscoverOptions),
@@ -99,38 +112,76 @@ pub enum Command {
     Shell(ShellOptions),
 }
 
-#[derive(Args)]
+#[derive(Args, Debug, Clone)]
 pub struct DiscoverOptions {
     #[clap(flatten)]
     probe: ProbeOptions,
 }
 
-#[derive(Args)]
+#[derive(Args, Debug, Clone)]
 pub struct ShellOptions {
-    #[clap(flatten)]
-    probe: ProbeOptions,
+    /// Turn off prompt and welcome messages
+    #[clap(long)]
+    no_prompt: bool,
 }
 
 impl Cli {
+    fn output_iterator<I: IntoIterator + Serialize>(&self, output: I) -> anyhow::Result<()>
+    where
+        I::Item: Tabled + Display,
+    {
+        match self.format {
+            Format::Text => {
+                for o in output.into_iter() {
+                    println!("{}", o);
+                }
+            }
+            Format::Table => {
+                let mut table = Table::new(output);
+                table.with(
+                    Width::wrap(80)
+                        .keep_words(true)
+                        .priority(Priority::max(true)),
+                );
+                println!("{}", table);
+            }
+            Format::Json => {
+                serde_json::to_writer(std::io::stdout(), &output)?;
+            }
+        }
+        Ok(())
+    }
+
     fn discover(&self, options: &DiscoverOptions) -> anyhow::Result<()> {
         let probe = options.probe.build_probe();
         if self.format.is_text() {
             eprintln!("Please wait for probing...");
         }
-        for mut prog in Programmer::discover(&probe)? {
-            let bootloader = prog.read_bootloader()?;
-            let name = prog.inner().name();
-            let device = output::Device::from_bootloader(
-                name.as_ref().map(|s| s.as_ref()),
-                &bootloader
-            );
-            print!("{}", device);
-        }
+
+        let devices = Programmer::discover(&probe)?
+            .into_iter()
+            .filter_map(|mut p| {
+                let result = p.read_bootloader();
+                let name = p.inner().name();
+                match result {
+                    Ok(b) => Some(output::Device::from_bootloader(name, &b)),
+                    Err(e) => {
+                        warn!(
+                            "cannot read bootloader info from {}: {}",
+                            name.as_ref().map(|s| s.as_ref()).unwrap_or("N/A"),
+                            e,
+                        );
+                        None
+                    }
+                }
+            })
+            .collect::<Vec<_>>();
+        self.output_iterator(devices)?;
         Ok(())
     }
 
     fn shell(&self, options: &ShellOptions) -> anyhow::Result<()> {
-        let mut shell = Shell::new();
+        let mut shell = Shell::new(options.clone());
         shell.run()
     }
 
@@ -138,7 +189,6 @@ impl Cli {
         match &self.command {
             Command::Discover(options) => self.discover(options),
             Command::Shell(options) => self.shell(options),
-            _ => todo!(),
         }
     }
 }
@@ -199,7 +249,7 @@ impl std::fmt::Display for DeviceSignal {
     }
 }
 
-#[derive(ValueEnum, Clone, Copy, PartialEq, Eq)]
+#[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeviceIdentify {
     /// Baudrate handshaking (0x7f magic)
     Handshake,
@@ -216,4 +266,3 @@ impl Into<Identify> for DeviceIdentify {
         }
     }
 }
-

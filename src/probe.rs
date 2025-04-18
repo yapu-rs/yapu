@@ -210,9 +210,19 @@ impl Probe {
         self.baudrate
     }
 
+    /// Sets baudrate of the probe.
+    pub fn set_baudrate(&mut self, baudrate: Baudrate) {
+        self.baudrate = baudrate;
+    }
+
     /// Gets signal scheme of the probe.
     pub fn signal_scheme(&self) -> SignalScheme {
         self.signal_scheme
+    }
+
+    /// Sets signal scheme of the probe.
+    pub fn set_signal_scheme(&mut self, scheme: SignalScheme) {
+        self.signal_scheme = scheme;
     }
 
     /// Gets reset signal of the signal scheme.
@@ -220,9 +230,19 @@ impl Probe {
         self.signal_scheme.reset()
     }
 
+    /// Sets reset signal of the signal scheme.
+    pub fn set_signal_reset(&mut self, signal: Option<Signal>) {
+        self.signal_scheme.set_reset(signal);
+    }
+
     /// Gets boot signal of the signal scheme.
     pub fn signal_boot(&self) -> Option<Signal> {
         self.signal_scheme.boot()
+    }
+
+    /// Sets boot signal of the signal scheme.
+    pub fn set_signal_boot(&mut self, signal: Option<Signal>) {
+        self.signal_scheme.set_boot(signal);
     }
 
     /// Gets active period of the reset signal.
@@ -230,9 +250,19 @@ impl Probe {
         self.reset_for
     }
 
+    /// Sets active period of the reset signal.
+    pub fn set_reset_for(&mut self, duration: Duration) {
+        self.reset_for = duration;
+    }
+
     /// Gets maximum retries for probing a device.
     pub fn max_attempts(&self) -> usize {
         self.max_attempts
+    }
+
+    /// Sets maximum retries for probing a device.
+    pub fn set_max_attempts(&mut self, max: usize) {
+        self.max_attempts = max;
     }
 
     /// Gets timeout for reading from the underlying port.
@@ -240,9 +270,19 @@ impl Probe {
         self.timeout
     }
 
+    /// Sets timeout for reading from the underlying port.
+    pub fn set_timeout(&mut self, timeout: Duration) {
+        self.timeout = timeout;
+    }
+
     /// Gets identification scheme.
     pub fn identify(&self) -> Identify {
         self.identify
+    }
+
+    /// Sets identification scheme.
+    pub fn set_identify(&mut self, scheme: Identify) {
+        self.identify = scheme;
     }
 }
 

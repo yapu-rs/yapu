@@ -1,19 +1,19 @@
+use serde::Serialize;
+use std::fmt::{Display, Formatter, Result};
 use tabled::Tabled;
 use tabled::derive::display;
-use serde::{Serialize, Deserialize};
-use std::borrow::Cow;
-use std::fmt::{Formatter, Display, Result};
 use yapu::{Bootloader, Opcode};
 
 #[derive(Serialize, Debug)]
-struct Opcodes<'a>(Cow<'a, [Opcode]>);
+struct Opcodes(Vec<Opcode>);
 
-impl<'a> Display for Opcodes<'a> {
+impl<'a> Display for Opcodes {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
             "{}",
-            self.0.iter()
+            self.0
+                .iter()
                 .map(|opcode: &Opcode| opcode.to_string())
                 .collect::<Vec<_>>()
                 .join(", "),
@@ -22,24 +22,24 @@ impl<'a> Display for Opcodes<'a> {
 }
 
 #[derive(Serialize, Tabled, Debug)]
-pub struct Device<'a> {
+pub struct Device {
     #[tabled(display("display::option", "N/A"))]
-    name: Option<Cow<'a, str>>,
-    version: Cow<'a, str>,
-    opcodes: Opcodes<'a>,
+    name: Option<String>,
+    version: String,
+    opcodes: Opcodes,
 }
 
-impl<'a> Device<'a> {
-    pub fn from_bootloader(name: Option<&'a str>, bootloader: &'a Bootloader) -> Self {
+impl Device {
+    pub fn from_bootloader(name: Option<String>, bootloader: &Bootloader) -> Self {
         Self {
             name: name.map(|s| s.into()),
-            version: bootloader.version_string().into(),
-            opcodes: Opcodes(bootloader.opcodes().into()),
+            version: bootloader.version_string(),
+            opcodes: Opcodes(bootloader.opcodes().to_vec()),
         }
     }
 }
 
-impl<'a> Display for Device<'a> {
+impl Display for Device {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         writeln!(
             f,
@@ -50,4 +50,3 @@ impl<'a> Display for Device<'a> {
         writeln!(f, "Opcodes: {}", self.opcodes)
     }
 }
-

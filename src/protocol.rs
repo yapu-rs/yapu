@@ -5,10 +5,10 @@ use std::ops::RangeInclusive;
 use std::ops::{Deref, DerefMut};
 
 #[cfg(feature = "serde")]
-use serde::{Serialize, Serializer, Deserialize, Deserializer};
-#[cfg(feature = "serde")]
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 #[allow(unused_imports)]
-use serde::{ser, de, de::Error as _};
+#[cfg(feature = "serde")]
+use serde::{de, de::Error as _, ser};
 
 /// Protocol conversion error
 #[derive(Debug, Clone)]
@@ -48,16 +48,15 @@ impl std::error::Error for Error {}
 pub struct Exceeded(usize, ExpectedRange);
 
 impl Exceeded {
-    pub fn unexpected(&self) -> usize { self.0 }
+    pub fn unexpected(&self) -> usize {
+        self.0
+    }
     pub fn expected_range(&self) -> &RangeInclusive<usize> {
         &self.1.0
     }
 
     pub fn to_serde<'de, D: Deserializer<'de>>(&self) -> D::Error {
-        D::Error::invalid_value(
-            de::Unexpected::Unsigned(self.0 as u64),
-            &self.1,
-        )
+        D::Error::invalid_value(de::Unexpected::Unsigned(self.0 as u64), &self.1)
     }
 }
 
