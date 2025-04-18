@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 use binrw::{BinRead, BinWrite, binread, binrw, binwrite};
-use std::ops::RangeInclusive;
 use std::borrow::Cow;
+use std::ops::RangeInclusive;
 use std::ops::{Deref, DerefMut};
 
 /// Protocol conversion error
@@ -33,7 +33,9 @@ mod checksum {
     }
 
     impl Buffer {
-        pub fn new() -> Self { Self::default() }
+        pub fn new() -> Self {
+            Self::default()
+        }
         pub fn state(&self) -> u8 {
             self.state
         }
@@ -187,7 +189,9 @@ define_slice_item! { pub Sector(SectorNo), as_u8, u8, 1..=256 }
 pub struct Size(u8, #[bw(calc = checksum::single(self.0))] u8);
 
 impl Into<usize> for Size {
-    fn into(self) -> usize { self.0 as usize + <Byte as SliceItem>::SIZE_RANGE.start() }
+    fn into(self) -> usize {
+        self.0 as usize + <Byte as SliceItem>::SIZE_RANGE.start()
+    }
 }
 
 impl TryFrom<usize> for Size {
@@ -258,13 +262,14 @@ impl<'a, T: SliceItem> TryFrom<Cow<'a, [T::Repr]>> for Slice<'a, T> {
     }
 }
 
-impl<'a, T: SliceItem> TryFrom<Vec<T::Repr>> for Slice<'a, T>
-{
+impl<'a, T: SliceItem> TryFrom<Vec<T::Repr>> for Slice<'a, T> {
     type Error = Error;
 
     fn try_from(value: Vec<T::Repr>) -> Result<Self, Self::Error> {
         if T::SIZE_RANGE.contains(&value.len()) {
-            Ok(Self { inner: value.into() })
+            Ok(Self {
+                inner: value.into(),
+            })
         } else {
             Err(Error::Exceeded(value.len(), T::SIZE_RANGE))
         }
@@ -276,7 +281,9 @@ impl<'a, T: SliceItem> TryFrom<&'a [T::Repr]> for Slice<'a, T> {
 
     fn try_from(value: &'a [T::Repr]) -> Result<Self, Self::Error> {
         if T::SIZE_RANGE.contains(&value.len()) {
-            Ok(Self { inner: value.into() })
+            Ok(Self {
+                inner: value.into(),
+            })
         } else {
             Err(Error::Exceeded(value.len(), T::SIZE_RANGE))
         }
@@ -287,7 +294,7 @@ impl<'a, T: SliceItem + BinWrite<Args<'a> = ()>> BinWrite for Slice<'a, T>
 where
     [T::Repr]: BinWrite<Args<'a> = ()>,
     T::Size: BinWrite<Args<'a> = ()>,
-    <T::Size as TryFrom<usize>>::Error: std::fmt::Debug
+    <T::Size as TryFrom<usize>>::Error: std::fmt::Debug,
 {
     type Args<'arg> = ();
 
@@ -309,7 +316,8 @@ where
 
         // write checksum
         let mut buffer = checksum::Buffer::new();
-        self.inner.write_options(&mut NoSeek::new(&mut buffer), endian, args)?;
+        self.inner
+            .write_options(&mut NoSeek::new(&mut buffer), endian, args)?;
         buffer.state().write_options(writer, endian, args)?;
 
         Ok(())
@@ -320,7 +328,7 @@ impl<'a, T: SliceItem + BinWrite<Args<'a> = ()>> binrw::meta::WriteEndian for Sl
 where
     [T::Repr]: BinWrite<Args<'a> = ()>,
     T::Size: BinWrite<Args<'a> = ()>,
-    <T::Size as TryFrom<usize>>::Error: std::fmt::Debug
+    <T::Size as TryFrom<usize>>::Error: std::fmt::Debug,
 {
     const ENDIAN: binrw::meta::EndianKind = binrw::meta::EndianKind::Endian(binrw::Endian::Big);
 }
@@ -420,7 +428,7 @@ impl<'a> ExtendedErase<'a> {
     pub fn is_bank2(self) -> bool {
         matches!(self, Self::Bank2)
     }
- 
+
     /// Whether erasure is done on specific pages.
     pub fn is_specific(self) -> bool {
         matches!(self, Self::Specific(..))

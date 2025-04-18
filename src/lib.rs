@@ -23,20 +23,22 @@ pub use probe::{Baudrate, Identify};
 pub use probe::{Probe, ProbeBuilder, Signal, SignalScheme, SignalSchemeBuilder};
 
 // Common requests and responses in the protocol
-pub use protocol::{Command, Opcode, Reply, Address, Size};
-pub use protocol::{Erase, ExtendedErase};
+pub use protocol::{Address, Command, Opcode, Reply, Size};
 pub use protocol::{Bootloader, Id, Version};
+pub use protocol::{Erase, ExtendedErase};
 
 // Slice and slice items defined in the protocol
+pub use protocol::{
+    Byte, Data, ExtendedPageNo, ExtendedPageNos, PageNo, PageNos, SectorNo, SectorNos,
+};
 pub use protocol::{Slice, SliceItem};
-pub use protocol::{Byte, Data, PageNo, PageNos, ExtendedPageNo, ExtendedPageNos, SectorNo, SectorNos};
 
 use binrw::io::NoSeek;
 use binrw::meta::{ReadEndian, WriteEndian};
 use binrw::{BinRead, BinWrite};
 use log::trace;
 use serialport::ClearBuffer;
-use serialport::SerialPort;
+pub use serialport::SerialPort;
 use serialport::{DataBits, FlowControl, Parity, StopBits};
 
 /// Error
@@ -213,8 +215,12 @@ impl Programmer {
             probe: probe.clone(),
         };
         match probe.identify() {
-            Identify::Handshake => { programmer.identify()?; },
-            Identify::Get => { programmer.send_command(Command::Get())?; },
+            Identify::Handshake => {
+                programmer.identify()?;
+            }
+            Identify::Get => {
+                programmer.send_command(Command::Get())?;
+            }
         }
         Ok(programmer)
     }

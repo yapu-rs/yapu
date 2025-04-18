@@ -1,8 +1,11 @@
-use std::str::FromStr;
-use yapu::{Baudrate, Probe, Programmer, Signal, SignalScheme, Identify};
-use log::{trace, debug, info, warn, error};
-use clap::{Parser, Subcommand, Args, ValueEnum};
+mod shell;
+
+use shell::Shell;
 use anyhow::anyhow;
+use clap::{Args, Parser, Subcommand, ValueEnum};
+use log::{debug, error, info, trace, warn};
+use std::str::FromStr;
+use yapu::{Baudrate, Identify, Probe, Programmer, Signal, SignalScheme};
 
 #[derive(Parser)]
 #[clap(about, author, version, arg_required_else_help = true)]
@@ -11,9 +14,8 @@ struct Cli {
     command: Command,
 
     #[clap(long, default_value = "normal")]
-    format: Format
+    format: Format,
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct DeviceSignal(Option<Signal>);
@@ -24,7 +26,9 @@ impl DeviceSignal {
 }
 
 impl From<Signal> for DeviceSignal {
-    fn from(value: Signal) -> Self { Self(Some(value)) }
+    fn from(value: Signal) -> Self {
+        Self(Some(value))
+    }
 }
 
 impl FromStr for DeviceSignal {
@@ -157,11 +161,17 @@ impl Format {
 enum Command {
     /// Discover compliant devices
     Discover(DiscoverOptions),
-    Shell(DeviceOptions),
+    Shell(ShellOptions),
 }
 
 #[derive(Args)]
 struct DiscoverOptions {
+    #[clap(flatten)]
+    probe: ProbeOptions,
+}
+
+#[derive(Args)]
+struct ShellOptions {
     #[clap(flatten)]
     probe: ProbeOptions,
 }
@@ -192,9 +202,15 @@ impl Cli {
         Ok(())
     }
 
+    fn shell(&self, options: &ShellOptions) -> anyhow::Result<()> {
+        let mut shell = Shell::new();
+        shell.run()
+    }
+
     fn execute(&self) -> anyhow::Result<()> {
         match &self.command {
             Command::Discover(options) => self.discover(options),
+            Command::Shell(options) => self.shell(options),
             _ => todo!(),
         }
     }
