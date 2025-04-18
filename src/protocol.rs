@@ -55,6 +55,7 @@ impl Exceeded {
         &self.1.0
     }
 
+    #[cfg(feature = "serde")]
     pub fn to_serde<'de, D: Deserializer<'de>>(&self) -> D::Error {
         D::Error::invalid_value(de::Unexpected::Unsigned(self.0 as u64), &self.1)
     }
@@ -305,6 +306,9 @@ impl serde::Serialize for Size {
 }
 
 pub trait SliceItem {
+    #[cfg(not(feature = "serde"))]
+    type Repr: Copy + Clone;
+    #[cfg(feature = "serde")]
     type Repr: Copy + Clone + Serialize + for<'de> Deserialize<'de>;
     type Size: TryFrom<usize>;
     const SIZE_RANGE: RangeInclusive<usize> = usize::MIN..=usize::MAX;
