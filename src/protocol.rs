@@ -137,7 +137,7 @@ mod checksum {
 /// supported, no matter it's constant or not. Therefore it's not possible to
 /// write:
 ///
-/// ```rust
+/// ```ignore
 /// #[derive(BinWrite)]
 /// #[bw(big)]
 /// enum Command {

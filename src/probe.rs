@@ -1,4 +1,5 @@
 use std::time::Duration;
+#[allow(unused_imports)]
 use crate::Command;
 
 pub type Baudrate = u32;

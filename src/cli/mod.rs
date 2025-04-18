@@ -249,6 +249,21 @@ impl std::fmt::Display for DeviceSignal {
     }
 }
 
+#[test]
+fn parsing_signals() -> anyhow::Result<()> {
+    let tests: &[(&'static str, Option<Signal>)] = &[
+        ("none", None),
+        ("rts", Some(Signal::rts(true))),
+        ("!rts", Some(Signal::rts(false))),
+        ("dtr", Some(Signal::dtr(true))),
+        ("!dtr", Some(Signal::dtr(false))),
+    ];
+    for (s, signal) in tests.iter().copied() {
+        assert_eq!(s.parse::<DeviceSignal>()?, DeviceSignal(signal));
+    }
+    Ok(())
+}
+
 #[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeviceIdentify {
     /// Baudrate handshaking (0x7f magic)
