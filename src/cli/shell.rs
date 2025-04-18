@@ -4,13 +4,21 @@ use serialport::SerialPort;
 use yapu::{Probe, Programmer};
 use rustyline::DefaultEditor;
 use rustyline::error::ReadlineError;
+use clap::{Parser, Subcommand, Args};
 
 #[derive(Default, Debug)]
 pub struct Shell {
     current: Option<Programmer>
 }
 
-struct Command {
+#[derive(Parser, Debug, Clone)]
+#[clap(no_binary_name = true)]
+enum Command {
+    /// Open a device and make it active
+    Open {
+        /// Device name
+        device: String
+    },
 }
 
 impl Shell {
@@ -52,22 +60,27 @@ impl Shell {
 
     fn dispatch(&mut self, line: &str) -> anyhow::Result<()> {
         let segments = line.trim().split_ascii_whitespace().collect::<Vec<_>>();
-        if let Some((&command, args)) = segments.split_first() {
-            match command {
-                "open" => {
-                    let name = args.get(0).ok_or(anyhow!("invalid argument"))?;
-                    self.open(name)?;
-                }
-                "get" => { self.get()?; }
-                "version" => { self.version()?; }
-                "id" => { self.id()?; }
-                "help" => println!("help"),
-                _ => println!("unknown command: {}", command),
-            }
-            Ok(())
-        } else {
-            Ok(())
+        if segments.len() > 0 {
+            let command = Command::try_parse_from(segments)?;
+            println!("{:?}", command);
         }
+        Ok(())
+        // if let Some((&command, args)) = segments.split_first() {
+        //     // match command {
+        //     //     "open" => {
+        //     //         let name = args.get(0).ok_or(anyhow!("invalid argument"))?;
+        //     //         self.open(name)?;
+        //     //     }
+        //     //     "get" => { self.get()?; }
+        //     //     "version" => { self.version()?; }
+        //     //     "id" => { self.id()?; }
+        //     //     "help" => println!("help"),
+        //     //     _ => println!("unknown command: {}", command),
+        //     // }
+        //     Ok(())
+        // } else {
+        //     Ok(())
+        // }
     }
 
     pub fn run(&mut self) -> anyhow::Result<()> {

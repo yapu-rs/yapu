@@ -4,27 +4,98 @@ use std::borrow::Cow;
 use std::ops::RangeInclusive;
 use std::ops::{Deref, DerefMut};
 
+#[cfg(feature = "serde")]
+use serde::{Serialize, Serializer, Deserialize, Deserializer};
+#[cfg(feature = "serde")]
+#[allow(unused_imports)]
+use serde::{ser, de, de::Error as _};
+
 /// Protocol conversion error
 #[derive(Debug, Clone)]
 pub enum Error {
-    Exceeded(usize, RangeInclusive<usize>),
+    Exceeded(Exceeded),
+}
+
+impl Error {
+    pub fn is_exceeded(&self) -> bool {
+        matches!(self, Self::Exceeded(..))
+    }
+
+    pub fn exceeded(&self) -> Option<&Exceeded> {
+        match &self {
+            Self::Exceeded(e) => Some(e),
+        }
+    }
+}
+
+impl From<Exceeded> for Error {
+    fn from(value: Exceeded) -> Self {
+        Self::Exceeded(value)
+    }
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Exceeded(value, range) => {
-                write!(
-                    f,
-                    "{} is not within valid range of size ({:?})",
-                    value, range
-                )
-            }
+            Self::Exceeded(e) => write!(f, "exceeded: {}", e),
         }
     }
 }
 
 impl std::error::Error for Error {}
+
+#[derive(Debug, Clone)]
+pub struct Exceeded(usize, ExpectedRange);
+
+impl Exceeded {
+    pub fn unexpected(&self) -> usize { self.0 }
+    pub fn expected_range(&self) -> &RangeInclusive<usize> {
+        &self.1.0
+    }
+
+    pub fn to_serde<'de, D: Deserializer<'de>>(&self) -> D::Error {
+        D::Error::invalid_value(
+            de::Unexpected::Unsigned(self.0 as u64),
+            &self.1,
+        )
+    }
+}
+
+impl std::fmt::Display for Exceeded {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} is not within valid range of size ({})",
+            self.0, self.1
+        )
+    }
+}
+
+impl std::error::Error for Exceeded {}
+
+/// A wrapper of [`RangeInclusive<usize>`] that implements [`de::Expected`], for
+/// friendlier error handling during deserialization.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ExpectedRange(RangeInclusive<usize>);
+
+impl From<RangeInclusive<usize>> for ExpectedRange {
+    fn from(value: RangeInclusive<usize>) -> Self {
+        Self(value)
+    }
+}
+
+impl std::fmt::Display for ExpectedRange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.0)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl de::Expected for ExpectedRange {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(formatter, "a size within range {}", self)
+    }
+}
 
 mod checksum {
     #[derive(Default, Debug, Clone)]
@@ -80,6 +151,7 @@ mod checksum {
 /// macro `binwrite` rather than derive macro `BinWrite`.
 #[binwrite]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[bw(big)]
 pub struct Opcode(u8, #[bw(calc = checksum::single(self.0))] u8);
 
@@ -137,6 +209,7 @@ impl From<u8> for Opcode {
 /// Address
 #[binwrite]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[bw(big)]
 pub struct Address(
     u32,
@@ -202,18 +275,44 @@ impl TryFrom<usize> for Size {
         if range.contains(&value) {
             Ok(Self(value as u8))
         } else {
-            Err(Error::Exceeded(value, range))
+            Err(Exceeded(value, range.into()).into())
         }
     }
 }
 
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for Size {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = usize::deserialize(deserializer)?;
+        let converted = Self::try_from(value).map_err(|e| {
+            let exceeded = e.exceeded().unwrap();
+            exceeded.to_serde::<D>()
+        })?;
+        Ok(converted)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for Size {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u64(self.0 as u64)
+    }
+}
+
 pub trait SliceItem {
-    type Repr: Copy + Clone;
+    type Repr: Copy + Clone + Serialize + for<'de> Deserialize<'de>;
     type Size: TryFrom<usize>;
     const SIZE_RANGE: RangeInclusive<usize> = usize::MIN..=usize::MAX;
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Slice<'a, T: SliceItem> {
     inner: Cow<'a, [T::Repr]>,
 }
@@ -257,7 +356,7 @@ impl<'a, T: SliceItem> TryFrom<Cow<'a, [T::Repr]>> for Slice<'a, T> {
         if T::SIZE_RANGE.contains(&value.len()) {
             Ok(Self { inner: value })
         } else {
-            Err(Error::Exceeded(value.len(), T::SIZE_RANGE))
+            Err(Exceeded(value.len(), T::SIZE_RANGE.into()).into())
         }
     }
 }
@@ -271,7 +370,7 @@ impl<'a, T: SliceItem> TryFrom<Vec<T::Repr>> for Slice<'a, T> {
                 inner: value.into(),
             })
         } else {
-            Err(Error::Exceeded(value.len(), T::SIZE_RANGE))
+            Err(Exceeded(value.len(), T::SIZE_RANGE.into()).into())
         }
     }
 }
@@ -285,7 +384,7 @@ impl<'a, T: SliceItem> TryFrom<&'a [T::Repr]> for Slice<'a, T> {
                 inner: value.into(),
             })
         } else {
-            Err(Error::Exceeded(value.len(), T::SIZE_RANGE))
+            Err(Exceeded(value.len(), T::SIZE_RANGE.into()).into())
         }
     }
 }
@@ -447,6 +546,7 @@ impl<'a> ExtendedErase<'a> {
 
 /// Reply
 #[derive(BinRead, Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[br(big)]
 pub enum Reply {
     /// ACK
@@ -462,6 +562,7 @@ pub enum Reply {
 /// Contains version and supported [`Opcode`]s.
 #[binread]
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[br(big)]
 pub struct Bootloader {
     #[br(temp)]
@@ -512,6 +613,7 @@ impl Bootloader {
 
 /// Version
 #[derive(BinRead, Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[br(big)]
 pub struct Version {
     version: u8,
@@ -557,6 +659,7 @@ impl std::fmt::Display for Version {
 /// Chip ID
 #[binread]
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[br(big)]
 pub struct Id {
     #[br(temp)]
