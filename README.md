@@ -7,7 +7,7 @@
 [![docs.rs documentation][docs.rs badge]][docs]
 
 ```console
-cargo install yapu
+cargo install yapu --features=binary
 ```
 
 [an3155]: https://www.st.com/resource/en/application_note/an3155-usart-protocol-used-in-the-stm32-bootloader-stmicroelectronics.pdf
